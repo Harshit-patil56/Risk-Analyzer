@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Analyzer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 256 256" fill="currentColor" class="icon-mono">
+        <path d="M208,40H48A16,16,0,0,0,32,56V200a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V56A16,16,0,0,0,208,40Zm0,160H48V56H208V200ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/>
+      </svg>
+      <h1>Risk Analyzer</h1>
+    </header>
+
+    <div id="scan-section">
+      <p class="url-label">Current Page URL</p>
+      <p id="current-url" class="url-display">Loading...</p>
+      <button id="scan-btn" class="scan-button" disabled>
+        <span id="btn-text">Scan This Page</span>
+        <span id="btn-loading" class="hidden">Analyzing...</span>
+      </button>
+    </div>
+
+    <div id="result-section" class="hidden">
+      <div id="score-display" class="score-container">
+        <div id="score-value" class="score-value">0</div>
+        <div id="score-label" class="score-label">Scanning...</div>
+      </div>
+
+      <div id="indicators-list" class="indicators"></div>
+
+      <a id="full-report" href="http://localhost:3000" target="_blank" class="full-report-link">
+        View Full Report
+      </a>
+    </div>
+
+    <div id="error-section" class="hidden">
+      <p id="error-message" class="error-text"></p>
+      <button id="retry-btn" class="scan-button">Retry</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
