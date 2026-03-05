@@ -61,7 +61,7 @@ def analyze_url_heuristics(url):
             "name": "Excessive URL Length",
             "detected": True,
             "severity": min(1.0, (len(url) - 75) / 100),
-            "explanation": f"This URL is {len(url)} characters long. Legitimate URLs are typically shorter. Long URLs can hide malicious paths."
+            "explanation": f"This URL is {len(url)} characters long. Scammers pad URLs with extra gibberish to bury the real destination."
         })
 
     # 2. IP address in URL
@@ -70,7 +70,7 @@ def analyze_url_heuristics(url):
             "name": "IP Address Instead of Domain",
             "detected": True,
             "severity": 0.85,
-            "explanation": "This URL uses an IP address instead of a domain name. Legitimate websites almost always use domain names."
+            "explanation": "Real websites use a name like 'google.com', not a raw number. If you see an IP address in a link, don't click it."
         })
 
     # 3. No HTTPS
@@ -79,7 +79,7 @@ def analyze_url_heuristics(url):
             "name": "Missing HTTPS",
             "detected": True,
             "severity": 0.6,
-            "explanation": "This URL does not use HTTPS encryption. Most legitimate sites use HTTPS to protect your data."
+            "explanation": "This link isn't encrypted. Any real bank, shop, or login page uses HTTPS — this one doesn't."
         })
 
     # 4. Suspicious TLD
@@ -91,7 +91,7 @@ def analyze_url_heuristics(url):
             "name": "Suspicious Top-Level Domain",
             "detected": True,
             "severity": 0.7,
-            "explanation": f"The domain uses '{tld}' which is commonly associated with phishing and spam websites."
+            "explanation": f"The '{tld}' ending is a red flag — it's a cheap domain extension heavily used by scammers."
         })
 
     # 5. URL shortener
@@ -100,7 +100,7 @@ def analyze_url_heuristics(url):
             "name": "URL Shortener Detected",
             "detected": True,
             "severity": 0.5,
-            "explanation": "This URL uses a shortening service which hides the actual destination. The real URL could be malicious."
+            "explanation": "The link is shortened so you can't see where it actually goes. Scammers use this to hide dangerous URLs."
         })
 
     # 6. Excessive subdomains
@@ -110,7 +110,7 @@ def analyze_url_heuristics(url):
             "name": "Excessive Subdomains",
             "detected": True,
             "severity": min(1.0, subdomain_count * 0.2),
-            "explanation": f"This URL has {subdomain_count} subdomains. Phishing sites often use many subdomains to mimic legitimate domains."
+            "explanation": f"This URL stacks {subdomain_count} subdomains — a trick to make a fake site look like it belongs to a real company."
         })
 
     # 7. @ symbol in URL
@@ -119,7 +119,7 @@ def analyze_url_heuristics(url):
             "name": "@ Symbol in URL",
             "detected": True,
             "severity": 0.9,
-            "explanation": "The '@' symbol in a URL can redirect you to a different site than what's displayed. This is a common phishing technique."
+            "explanation": "Everything before the '@' in a URL is ignored by your browser — so 'paypal.com@evil.com' takes you to evil.com, not PayPal."
         })
 
     # 8. Brand impersonation / typosquatting
@@ -130,7 +130,7 @@ def analyze_url_heuristics(url):
                     "name": "Brand Impersonation",
                     "detected": True,
                     "severity": 0.95,
-                    "explanation": f"This domain appears to impersonate '{brand}' using a lookalike name '{variant}'. This is a common phishing technique."
+                    "explanation": f"This domain is pretending to be {brand}. '{variant}' is a fake — one letter swapped hoping you won't notice."
                 })
                 break
         else:
@@ -146,7 +146,7 @@ def analyze_url_heuristics(url):
             "name": "Suspicious Path Keywords",
             "detected": True,
             "severity": 0.6,
-            "explanation": f"The URL path contains sensitive keywords ({', '.join(found_path_keywords)}) combined with other suspicious signals."
+            "explanation": f"The path uses words like '{', '.join(found_path_keywords)}' to look like a login or account page, while the domain itself already looks fake."
         })
 
     # 10. Double extension or encoded characters
@@ -155,7 +155,7 @@ def analyze_url_heuristics(url):
             "name": "URL Encoding / Obfuscation",
             "detected": True,
             "severity": 0.7,
-            "explanation": "This URL contains encoded or obfuscated characters, which can hide the true destination."
+            "explanation": "Parts of this URL are scrambled with encoding. That's usually done to disguise where a link actually leads."
         })
 
     return indicators
@@ -177,7 +177,7 @@ def analyze_email_heuristics(content):
             "name": "Urgency Language Detected",
             "detected": True,
             "severity": severity,
-            "explanation": f"This message uses pressure language: {', '.join(found_urgency[:5])}. Phishing emails create a false sense of urgency to trick you into acting quickly."
+            "explanation": f"This message tries to panic you with words like '{', '.join(found_urgency[:3])}'. That pressure is designed to make you click before you think."
         })
 
     # 2. Extract URLs from email content
@@ -187,7 +187,7 @@ def analyze_email_heuristics(content):
             "name": "Multiple URLs in Message",
             "detected": True,
             "severity": 0.4,
-            "explanation": f"This message contains {len(urls_in_email)} URLs. Phishing emails often include multiple links to increase the chance of a click."
+            "explanation": f"There are {len(urls_in_email)} links crammed into this message. Scam emails carpet-bomb links hoping one gets clicked."
         })
 
     # 3. Mismatched display text vs URL (basic check)
@@ -197,7 +197,7 @@ def analyze_email_heuristics(content):
             "name": "Suspicious Link Context",
             "detected": True,
             "severity": 0.6,
-            "explanation": "A URL in this message is paired with action words like 'click here' or 'verify'. This pattern is common in phishing emails."
+            "explanation": "A link in here uses 'click here' or 'verify' as the bait. That combo is a textbook phishing move."
         })
 
     # 4. Request for sensitive info
@@ -211,7 +211,7 @@ def analyze_email_heuristics(content):
             "name": "Request for Sensitive Information",
             "detected": True,
             "severity": 0.85,
-            "explanation": f"This message mentions sensitive data: {', '.join(found_sensitive[:3])}. Legitimate organizations rarely ask for this via email."
+            "explanation": f"This message is asking for your {', '.join(found_sensitive[:3])}. No real company asks for that by email — ever."
         })
 
     # 5. Generic greeting
@@ -221,7 +221,7 @@ def analyze_email_heuristics(content):
             "name": "Generic Greeting",
             "detected": True,
             "severity": 0.35,
-            "explanation": "This message uses a generic greeting instead of your name. Legitimate companies usually address you personally."
+            "explanation": "It says 'Dear Customer' instead of your actual name. Real companies know who you are."
         })
 
     # 6. Threatening language
@@ -232,7 +232,7 @@ def analyze_email_heuristics(content):
             "name": "Threatening Language",
             "detected": True,
             "severity": 0.7,
-            "explanation": f"This message contains threatening language: '{found_threats[0]}'. Phishing emails often threaten consequences to pressure victims."
+            "explanation": f"This message threatens that your account will be '{found_threats[0]}'. Scammers do this to make you act before you think."
         })
 
     return indicators, urls_in_email

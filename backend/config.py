@@ -21,5 +21,10 @@ SUSPICIOUS_THRESHOLD = 60
 # API timeout in seconds
 API_TIMEOUT = 5
 
-# Model path
+# Model paths
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "phishing_model.joblib")
+PHISHING_URL_FEATURES_PATH = os.path.join(os.path.dirname(__file__), "models", "phishing_url_features.joblib")
+SOCIAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "social_model.joblib")
+SOCIAL_VECTORIZER_PATH = os.path.join(os.path.dirname(__file__), "models", "social_vectorizer.joblib")
+FRAUD_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "transaction_fraud_model.joblib")
+FRAUD_SCALER_PATH = os.path.join(os.path.dirname(__file__), "models", "fraud_scaler.joblib")

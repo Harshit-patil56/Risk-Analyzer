@@ -15,11 +15,12 @@ import {
     ListBullets,
     UploadSimple,
     X,
+    CreditCard,
 } from "@phosphor-icons/react";
 import RiskScorecard from "@/components/results/RiskScorecard";
 import EducationalModule from "@/components/results/EducationalModule";
 import IntelPanel from "@/components/results/IntelPanel";
-import { scanUrl, scanEmail, scanQr, scanBulk } from "@/lib/api";
+import { scanUrl, scanEmail, scanQr, scanBulk, scanTransaction } from "@/lib/api";
 import { scanStore } from "@/lib/sessionStore";
 import { AnimatedTabs, AnimatedButton } from "@/components/ui/AnimatedTabs";
 
@@ -28,6 +29,7 @@ export default function ScannerPanel({ onScanComplete }) {
     const [urlValue, setUrlValue] = useState("");
     const [emailValue, setEmailValue] = useState("");
     const [bulkValue, setBulkValue] = useState("");
+    const [transactionAmount, setTransactionAmount] = useState("");
     const [qrFile, setQrFile] = useState(null);
     const [qrPreview, setQrPreview] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -67,6 +69,12 @@ export default function ScannerPanel({ onScanComplete }) {
                 setBulkResult(data);
                 // Save each result individually
                 (data.results || []).forEach(r => { if (r.overall_score !== null) scanStore.save(r); });
+            } else if (inputType === "transaction") {
+                const amt = parseFloat(transactionAmount);
+                if (!transactionAmount.trim() || isNaN(amt) || amt <= 0) { setError("Please enter a valid transaction amount."); setLoading(false); return; }
+                data = await scanTransaction({ amount: amt });
+                setResult(data);
+                scanStore.save(data);
             }
             if (onScanComplete) onScanComplete();
         } catch (err) {
@@ -83,6 +91,7 @@ export default function ScannerPanel({ onScanComplete }) {
         setUrlValue("");
         setEmailValue("");
         setBulkValue("");
+        setTransactionAmount("");
         setQrFile(null);
         setQrPreview(null);
     };
@@ -108,13 +117,15 @@ export default function ScannerPanel({ onScanComplete }) {
             inputType === "email" ? emailValue.trim().length >= 10 :
                 inputType === "qr" ? qrFile !== null :
                     inputType === "bulk" ? bulkValue.trim().length > 0 :
-                        false;
+                        inputType === "transaction" ? transactionAmount.trim().length > 0 :
+                            false;
 
     const scanLabel =
         inputType === "url" ? "URL" :
             inputType === "email" ? "Email" :
                 inputType === "qr" ? "QR Code" :
-                    "Bulk URLs";
+                    inputType === "transaction" ? "Transaction" :
+                        "Bulk URLs";
 
     return (
         <div className="space-y-6">
@@ -131,6 +142,7 @@ export default function ScannerPanel({ onScanComplete }) {
                                     { value: "email", label: "Email", icon: EnvelopeSimple },
                                     { value: "qr", label: "QR Code", icon: QrCode },
                                     { value: "bulk", label: "Bulk", icon: ListBullets },
+                                    { value: "transaction", label: "Transaction", icon: CreditCard },
                                 ]}
                                 layoutId="scanner-tabs"
                             />
@@ -206,6 +218,40 @@ export default function ScannerPanel({ onScanComplete }) {
                                     onChange={handleQrFileChange}
                                     className="hidden"
                                 />
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="transaction" className="space-y-4">
+                            <div className="space-y-4">
+                                <div className="p-3 rounded-lg border border-border bg-muted/30">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <CreditCard size={14} className="text-muted-foreground" />
+                                        <p className="text-xs font-medium text-muted-foreground">Banking Fraud Detection</p>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                                        XGBoost model trained on 284,807 real credit card transactions · 98% ROC-AUC
+                                    </p>
+                                </div>
+                                <div>
+                                    <label htmlFor="transaction-amount" className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                                        Transaction Amount
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">$</span>
+                                        <Input
+                                            id="transaction-amount"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={transactionAmount}
+                                            onChange={(e) => setTransactionAmount(e.target.value)}
+                                            onKeyDown={(e) => e.key === "Enter" && inputReady && !loading && handleScan()}
+                                            disabled={loading}
+                                            className="pl-7 font-mono text-sm"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </TabsContent>
 

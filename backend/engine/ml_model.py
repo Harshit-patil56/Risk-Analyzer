@@ -1,9 +1,10 @@
 import os
 import joblib
 import numpy as np
-from utils.url_features import extract_url_features, url_features_to_array
+from utils.url_features import extract_phishing_url_features
 from config import MODEL_PATH
 
+FEATURES_PATH = os.path.join(os.path.dirname(MODEL_PATH), "phishing_url_features.joblib")
 
 _model = None
 _model_loaded = False
@@ -17,7 +18,7 @@ def _load_model():
         return
 
     if not os.path.exists(MODEL_PATH):
-        _model_error = f"Model file not found at {MODEL_PATH}. Run training/train_model.py first."
+        _model_error = f"Model file not found at {MODEL_PATH}. Run training/train_url_model.py first."
         _model_loaded = True
         return
 
@@ -31,7 +32,7 @@ def _load_model():
 
 def predict_phishing_probability(url):
     """
-    Predict phishing probability for a URL using the ML model.
+    Predict phishing probability for a URL using the XGBoost model.
     Returns:
         {
             "probability": float (0-1) or None if model unavailable,
@@ -49,9 +50,8 @@ def predict_phishing_probability(url):
         }
 
     try:
-        features = extract_url_features(url)
-        feature_array = np.array([url_features_to_array(features)])
-        # predict_proba returns [[prob_safe, prob_phishing]]
+        feature_array = np.array([extract_phishing_url_features(url)], dtype=np.float32)
+        # predict_proba returns [[prob_legitimate, prob_phishing]]
         proba = _model.predict_proba(feature_array)
         phishing_prob = float(proba[0][1])
         return {

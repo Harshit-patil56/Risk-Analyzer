@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import CORS_ORIGINS
-from routers import scan, qr, bulk
+from routers import scan, qr, bulk, transaction
 
 app = FastAPI(
     title="Risk Analyzer API",
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(scan.router, prefix="/scan", tags=["scan"])
 app.include_router(qr.router, prefix="/scan", tags=["qr"])
 app.include_router(bulk.router, prefix="/scan", tags=["bulk"])
+app.include_router(transaction.router, prefix="/scan", tags=["transaction"])
 
 
 @app.get("/")

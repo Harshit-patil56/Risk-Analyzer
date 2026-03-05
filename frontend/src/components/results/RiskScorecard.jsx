@@ -12,6 +12,11 @@ import {
     CloudCheck,
     CloudSlash,
     Brain,
+    Link,
+    EnvelopeSimple,
+    QrCode,
+    CreditCard,
+    ListBullets,
 } from "@phosphor-icons/react";
 
 const STATUS_CONFIG = {
@@ -109,12 +114,16 @@ function ThreatIndicators({ indicators }) {
         medium: { color: "var(--status-suspicious)", bg: "var(--status-suspicious-bg)" },
         low: { color: "var(--status-safe)", bg: "var(--status-safe-bg)" },
     };
+    const severityOrder = { high: 0, medium: 1, low: 2 };
+    const sorted = [...indicators].sort(
+        (a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
+    );
 
     return (
         <div className="space-y-2">
             <h3 className="text-sm font-medium text-muted-foreground">Detected Indicators</h3>
             <div className="space-y-2">
-                {indicators.map((ind, i) => {
+                {sorted.map((ind, i) => {
                     const config = severityConfig[ind.severity] || severityConfig.low;
                     return (
                         <div
@@ -141,10 +150,33 @@ function ThreatIndicators({ indicators }) {
 
 export default function RiskScorecard({ result }) {
     const [expanded, setExpanded] = useState(false);
+    const [inputExpanded, setInputExpanded] = useState(false);
 
     if (!result) return null;
 
-    const { overall_score, label, sub_scores, indicators, api_status, ml_status } = result;
+    const { overall_score, label, sub_scores, indicators, api_status, ml_status, ml_probability, scan_type } = result;
+    const mlActive = ml_status === "active" || ml_status === "available";
+
+    // Scan type display config
+    const scanTypeConfig = {
+        url:         { label: "URL Scan",         icon: Link },
+        email:       { label: "Email Scan",        icon: EnvelopeSimple },
+        qr:          { label: "QR Code Scan",      icon: QrCode },
+        bulk:        { label: "Bulk Scan",          icon: ListBullets },
+        transaction: { label: "Transaction Scan",  icon: CreditCard },
+    };
+    const scanTypeInfo = scanTypeConfig[scan_type] || scanTypeConfig.url;
+    const ScanIcon = scanTypeInfo.icon;
+
+    // Sub-score label mapping
+    const subScoreLabels = {
+        domain:         "Domain Risk",
+        structural:     "Structural Risk",
+        language:       "Language Risk",
+        api_reputation: "API Reputation",
+        fraud_ml:       "Fraud ML Score",
+        ml:             "ML Score",
+    };
 
     return (
         <Card className="p-6 border border-border bg-card">
@@ -154,10 +186,32 @@ export default function RiskScorecard({ result }) {
             </div>
 
             {/* Scanned input */}
-            <div className="mb-4 px-3 py-2 rounded-md bg-muted/50 border border-border">
-                <p className="text-xs text-muted-foreground mb-0.5">Scanned Input</p>
-                <p className="text-sm font-mono break-all">{result.scanned_input}</p>
-            </div>
+            {(() => {
+                const fullText = result.scanned_input || "";
+                const COLLAPSE_AT = 120;
+                const needsToggle = fullText.length > COLLAPSE_AT;
+                const displayText = needsToggle && !inputExpanded
+                    ? fullText.slice(0, COLLAPSE_AT) + "…"
+                    : fullText;
+                return (
+                    <div className="mb-4 px-3 py-2 rounded-md bg-muted/50 border border-border">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                            <ScanIcon size={12} className="text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">{scanTypeInfo.label}</p>
+                        </div>
+                        <p className="text-sm font-mono break-all whitespace-pre-wrap">{displayText}</p>
+                        {needsToggle && (
+                            <button
+                                onClick={() => setInputExpanded(!inputExpanded)}
+                                className="mt-1 text-xs font-medium cursor-pointer"
+                                style={{ color: "var(--status-suspicious)" }}
+                            >
+                                {inputExpanded ? "Show less ▲" : "Read more ▼"}
+                            </button>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Sub-scores expandable */}
             <button
@@ -170,27 +224,34 @@ export default function RiskScorecard({ result }) {
 
             {expanded && (
                 <div className="space-y-3 mb-4 pb-4 border-b border-border">
-                    <SubScoreBar name="Domain Risk" score={sub_scores.domain} />
-                    <SubScoreBar name="Structural Risk" score={sub_scores.structural} />
-                    <SubScoreBar name="Language Risk" score={sub_scores.language} />
-                    <SubScoreBar name="API Reputation" score={sub_scores.api_reputation} />
+                    {sub_scores && Object.entries(sub_scores).map(([key, value]) => (
+                        <SubScoreBar key={key} name={subScoreLabels[key] || key} score={value} />
+                    ))}
 
-                    {/* Status indicators */}
-                    <div className="flex flex-wrap gap-2 mt-3">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Brain size={14} weight="regular" className="text-muted-foreground" />
-                            ML: {ml_status === "available" ? "Active" : "Offline"}
+                    {/* Status indicators — semantic colors per UI rules */}
+                    <div className="flex flex-wrap gap-3 mt-3">
+                        <div className="flex items-center gap-1 text-xs">
+                            <Brain
+                                size={14}
+                                weight="regular"
+                                style={{ color: mlActive ? "var(--status-safe)" : "var(--muted-foreground)" }}
+                            />
+                            <span style={{ color: mlActive ? "var(--status-safe)" : "var(--muted-foreground)" }}>
+                                ML {mlActive ? "Active" : "Offline"}
+                            </span>
                         </div>
-                        {api_status && Object.entries(api_status).map(([api, status]) => (
-                            <div key={api} className="flex items-center gap-1 text-xs text-muted-foreground">
-                                {status === "available" ? (
-                                    <CloudCheck size={14} weight="regular" className="text-muted-foreground" />
-                                ) : (
-                                    <CloudSlash size={14} weight="regular" className="text-muted-foreground" />
-                                )}
-                                {api.replace("_", " ")}
-                            </div>
-                        ))}
+                        {api_status && Object.entries(api_status).map(([api, status]) => {
+                            const isAvail = status === "available";
+                            return (
+                                <div key={api} className="flex items-center gap-1 text-xs"
+                                    style={{ color: isAvail ? "var(--status-safe)" : "var(--muted-foreground)" }}>
+                                    {isAvail
+                                        ? <CloudCheck size={14} weight="regular" />
+                                        : <CloudSlash size={14} weight="regular" />}
+                                    {api.replace(/_/g, " ")}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

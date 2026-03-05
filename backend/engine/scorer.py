@@ -1,20 +1,19 @@
 from config import SAFE_THRESHOLD, SUSPICIOUS_THRESHOLD
 
 
-# Default weights when all layers are available
-WEIGHTS_FULL = {
-    "domain": 0.35,
-    "structural": 0.25,
-    "language": 0.20,
-    "api": 0.20,
+# Weights when ML model is available (ML is primary signal)
+WEIGHTS_ML = {
+    "ml": 0.60,
+    "domain": 0.22,
+    "structural": 0.12,
+    "language": 0.06,
 }
 
-# Redistributed weights when API layer is unavailable
-WEIGHTS_NO_API = {
+# Fallback weights when ML is unavailable (heuristics only)
+WEIGHTS_NO_ML = {
     "domain": 0.44,
     "structural": 0.31,
     "language": 0.25,
-    "api": 0.0,
 }
 
 
@@ -28,9 +27,9 @@ def _classify_label(score):
         return "dangerous"
 
 
-def compute_domain_score(url_indicators, ml_result):
+def compute_domain_score(url_indicators):
     """
-    Compute domain risk sub-score (0-100) from URL heuristic indicators + ML prediction.
+    Compute domain risk sub-score (0-100) from URL heuristic indicators.
     Domain-related indicators: IP address, suspicious TLD, brand impersonation,
     excessive subdomains, URL shortener.
     """
@@ -44,25 +43,13 @@ def compute_domain_score(url_indicators, ml_result):
 
     relevant = [ind for ind in url_indicators if ind["name"] in domain_indicator_names and ind["detected"]]
     if not relevant:
-        heuristic_score = 0
-    else:
-        max_severity = max(ind["severity"] for ind in relevant)
-        avg_severity = sum(ind["severity"] for ind in relevant) / len(relevant)
-        # Blend max and average — high-severity indicators dominate
-        blended_severity = (max_severity * 0.6) + (avg_severity * 0.4)
-        # More aggressive count boost
-        count_boost = min(1.0, 0.5 + len(relevant) * 0.2)
-        heuristic_score = blended_severity * 100 * count_boost
+        return 0
 
-    # Blend with ML if available
-    if ml_result and ml_result.get("available") and ml_result["probability"] is not None:
-        ml_score = ml_result["probability"] * 100
-        # Weighted blend: 60% heuristic, 40% ML
-        blended = (heuristic_score * 0.6) + (ml_score * 0.4)
-    else:
-        blended = heuristic_score
-
-    return min(100, max(0, round(blended)))
+    max_severity = max(ind["severity"] for ind in relevant)
+    avg_severity = sum(ind["severity"] for ind in relevant) / len(relevant)
+    blended_severity = (max_severity * 0.6) + (avg_severity * 0.4)
+    count_boost = min(1.0, 0.5 + len(relevant) * 0.2)
+    return min(100, max(0, round(blended_severity * 100 * count_boost)))
 
 
 def compute_structural_score(url_indicators):
@@ -108,47 +95,28 @@ def compute_language_score(email_indicators):
     return min(100, max(0, round(score)))
 
 
-def compute_api_score(api_results):
-    """
-    Compute API reputation sub-score (0-100).
-    Returns score and availability status.
-    """
-    available_results = [r for r in api_results if not r.get("unavailable", True)]
-    if not available_results:
-        return 0, False
-
-    threat_count = sum(1 for r in available_results if r["is_threat"])
-    total_checked = len(available_results)
-
-    # Weighted by confidence
-    total_confidence = sum(r["confidence"] for r in available_results if r["is_threat"])
-
-    if threat_count == 0:
-        return 0, True
-
-    # Base score from threat ratio + confidence
-    threat_ratio = threat_count / total_checked
-    score = (threat_ratio * 60) + (total_confidence / threat_count * 40)
-    return min(100, max(0, round(score))), True
-
-
-def compute_overall_score(domain_score, structural_score, language_score, api_score, api_available):
+def compute_overall_score(domain_score, structural_score, language_score, ml_score=None):
     """
     Compute weighted overall risk score (0-100) and label.
+    ML is the primary signal (60%) when available; heuristics fill the remainder.
+    Without ML, falls back to pure heuristic weighting.
     """
-    weights = WEIGHTS_FULL if api_available else WEIGHTS_NO_API
-
-    overall = (
-        domain_score * weights["domain"]
-        + structural_score * weights["structural"]
-        + language_score * weights["language"]
-        + api_score * weights["api"]
-    )
+    if ml_score is not None:
+        overall = (
+            ml_score * WEIGHTS_ML["ml"]
+            + domain_score * WEIGHTS_ML["domain"]
+            + structural_score * WEIGHTS_ML["structural"]
+            + language_score * WEIGHTS_ML["language"]
+        )
+    else:
+        overall = (
+            domain_score * WEIGHTS_NO_ML["domain"]
+            + structural_score * WEIGHTS_NO_ML["structural"]
+            + language_score * WEIGHTS_NO_ML["language"]
+        )
 
     overall = min(100, max(0, round(overall)))
-    label = _classify_label(overall)
-
-    return overall, label
+    return overall, _classify_label(overall)
 
 
 def generate_education(indicators, label):

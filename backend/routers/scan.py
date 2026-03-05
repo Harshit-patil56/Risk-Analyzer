@@ -4,16 +4,52 @@ import re
 
 from engine.heuristics import analyze_url_heuristics, analyze_email_heuristics
 from engine.ml_model import predict_phishing_probability
-from engine.api_checker import check_all_apis
+from engine.social_model import predict_social_phishing
+from engine.fraud_model import predict_transaction_fraud, FRAUD_FEATURE_NAMES
 from engine.intel import gather_url_intel
 from engine.scorer import (
     compute_domain_score,
     compute_structural_score,
     compute_language_score,
-    compute_api_score,
     compute_overall_score,
     generate_education,
 )
+
+# ------------------------------------------------------------------
+# Financial content detection (auto-triggers fraud model in emails)
+# ------------------------------------------------------------------
+_FINANCIAL_KW_RE = re.compile(
+    r'\b(?:transfer|wire\s+transfer|payment|transaction|credit\s+card|debit\s+card|'
+    r'bank\s+account|routing\s+number|swift\s+code|iban|deposit|withdrawal?|'
+    r'send\s+(?:the\s+)?(?:money|funds?)|pay\s+(?:now|immediately|asap|us|me)|'
+    r'western\s+union|moneygram|bitcoin|cryptocurrency|paypal|venmo|zelle|cashapp|'
+    r'money\s+order|wire\s+funds?|urgent\s+payment|immediate\s+transfer|'
+    r'financial\s+transaction|bank\s+transfer|invoice\s+(?:due|payment|attached))\b',
+    re.IGNORECASE,
+)
+_CURRENCY_RE = re.compile(r'[$\£\€\¥\₹]|\b(?:USD|EUR|GBP|AUD|CAD|INR)\b', re.IGNORECASE)
+_AMOUNT_RE = re.compile(
+    r'(?:[$\£\€\¥\₹]\s*\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s*(?:USD|EUR|GBP|dollars?|euros?|pounds?))',
+    re.IGNORECASE,
+)
+
+
+def _extract_financial_info(text: str):
+    """Detect financial content and extract the largest dollar amount."""
+    has_financial = bool(_FINANCIAL_KW_RE.search(text) or _CURRENCY_RE.search(text))
+    amount = 0.0
+    if has_financial:
+        raw_amounts = _AMOUNT_RE.findall(text)
+        parsed = []
+        for m in raw_amounts:
+            clean = re.sub(r'[^0-9.]', '', m.replace(',', ''))
+            try:
+                parsed.append(float(clean))
+            except ValueError:
+                pass
+        if parsed:
+            amount = max(parsed)
+    return has_financial, amount
 
 router = APIRouter()
 
@@ -60,15 +96,6 @@ class EmailScanRequest(BaseModel):
         return v
 
 
-def _build_api_status(api_results):
-    """Convert API results to status dict for response."""
-    status = {}
-    for result in api_results:
-        name = result["api_name"]
-        status[name] = "unavailable" if result.get("unavailable") else "available"
-    return status
-
-
 @router.post("/url")
 def scan_url(request: UrlScanRequest):
     """Scan a URL for phishing indicators."""
@@ -77,27 +104,19 @@ def scan_url(request: UrlScanRequest):
     # Layer 1: Heuristic analysis
     url_indicators = analyze_url_heuristics(url)
 
-    # Layer 2: ML prediction (DISABLED — using heuristics + API only)
-    ml_result = {"available": False, "probability": None}
+    # Layer 2: ML prediction (XGBoost — primary signal, 97.5% ROC-AUC)
+    ml_result = predict_phishing_probability(url)
 
-    # Layer 3: External API checks
-    api_results = check_all_apis(url)
-
-    # Compute sub-scores
-    domain_score = compute_domain_score(url_indicators, ml_result)
+    # Sub-scores
+    domain_score = compute_domain_score(url_indicators)
     structural_score = compute_structural_score(url_indicators)
-    language_score = 0  # No language analysis for plain URL scan
-    api_score, api_available = compute_api_score(api_results)
+    ml_score = round(ml_result["probability"] * 100) if ml_result.get("available") and ml_result["probability"] is not None else None
 
-    # Compute overall
-    overall_score, label = compute_overall_score(
-        domain_score, structural_score, language_score, api_score, api_available
-    )
+    # Overall score: ML dominates (60%) when available
+    overall_score, label = compute_overall_score(domain_score, structural_score, 0, ml_score)
 
-    # Generate education
     education = generate_education(url_indicators, label)
 
-    # Build indicator list for response (only detected ones)
     detected_indicators = []
     for ind in url_indicators:
         if ind["detected"]:
@@ -112,7 +131,6 @@ def scan_url(request: UrlScanRequest):
                 "explanation": ind["explanation"],
             })
 
-    # Layer 4: URL Intelligence gathering
     intel = gather_url_intel(url)
 
     return {
@@ -121,13 +139,12 @@ def scan_url(request: UrlScanRequest):
         "sub_scores": {
             "domain": domain_score,
             "structural": structural_score,
-            "language": language_score,
-            "api_reputation": api_score,
+            "ml": ml_score if ml_score is not None else 0,
         },
         "indicators": detected_indicators,
         "education": education,
-        "api_status": _build_api_status(api_results),
-        "ml_status": "disabled",
+        "ml_status": "active" if ml_result.get("available") else "unavailable",
+        "ml_probability": ml_result.get("probability"),
         "intel": intel,
         "scan_type": "url",
         "scanned_input": url,
@@ -142,38 +159,43 @@ def scan_email(request: EmailScanRequest):
     # Layer 1a: Email language heuristics
     email_indicators, extracted_urls = analyze_email_heuristics(content)
 
-    # Layer 1b + 2 + 3: Analyze extracted URLs
-    all_url_indicators = []
-    all_api_results = []
-    ml_result = {"available": False, "probability": None}
+    # Layer 1b: Social/email ML model (primary signal, trained on 121,640 emails)
+    social_ml = predict_social_phishing(content)
 
-    for url in extracted_urls[:5]:  # Limit to first 5 URLs
+    # Layer 1c: Heuristic analysis of embedded URLs
+    all_url_indicators = []
+    for url in extracted_urls[:5]:
         url_inds = analyze_url_heuristics(url)
         all_url_indicators.extend(url_inds)
 
-        # ML prediction disabled
-        pass
+    # Layer 1d: Fraud model — auto-triggered when financial language/amounts detected
+    is_financial, extracted_amount = _extract_financial_info(content)
+    fraud_result = None
+    if is_financial:
+        fraud_features = {f: 0.0 for f in FRAUD_FEATURE_NAMES}
+        fraud_features["Amount"] = extracted_amount
+        fraud_result = predict_transaction_fraud(fraud_features)
 
-        api_results = check_all_apis(url)
-        all_api_results.extend(api_results)
-
-    # Compute sub-scores
-    domain_score = compute_domain_score(all_url_indicators, ml_result) if all_url_indicators else 0
+    # Sub-scores
+    domain_score = compute_domain_score(all_url_indicators) if all_url_indicators else 0
     structural_score = compute_structural_score(all_url_indicators) if all_url_indicators else 0
     language_score = compute_language_score(email_indicators)
 
-    # API score: aggregate all URL API results
-    if all_api_results:
-        api_score, api_available = compute_api_score(all_api_results)
+    # ML score: use max of social ML and fraud ML when both are available
+    social_prob = social_ml.get("probability") if social_ml.get("available") and social_ml.get("probability") is not None else None
+    fraud_prob = fraud_result.get("probability") if fraud_result and fraud_result.get("available") and fraud_result.get("probability") is not None else None
+    if social_prob is not None and fraud_prob is not None:
+        ml_score = round(max(social_prob, fraud_prob) * 100)
+    elif social_prob is not None:
+        ml_score = round(social_prob * 100)
+    elif fraud_prob is not None:
+        ml_score = round(fraud_prob * 100)
     else:
-        api_score, api_available = 0, False
+        ml_score = None
 
-    # Compute overall
-    overall_score, label = compute_overall_score(
-        domain_score, structural_score, language_score, api_score, api_available
-    )
+    # Overall score: social ML dominates (60%) when available
+    overall_score, label = compute_overall_score(domain_score, structural_score, language_score, ml_score)
 
-    # Combine all indicators
     all_indicators = email_indicators + all_url_indicators
     education = generate_education(all_indicators, label)
 
@@ -193,25 +215,58 @@ def scan_email(request: EmailScanRequest):
                 "explanation": ind["explanation"],
             })
 
-    # API status from first URL's results (if any)
-    api_status = {}
-    if all_api_results:
-        api_status = _build_api_status(all_api_results[:4])
+    # Always surface a financial content indicator when money-related language is detected
+    if is_financial:
+        amount_part = f" It mentions a specific amount of ${extracted_amount:.2f}." if extracted_amount > 0 else ""
+        detected_indicators.append({
+            "name": "Asks for Money or Payment",
+            "severity": "medium",
+            "explanation": (
+                f"This message is asking you to send, pay, or transfer money.{amount_part} "
+                f"If you weren't expecting this, do not send anything before verifying the sender through a separate channel."
+            ),
+        })
+
+    # Add ML indicator for UI visibility
+    if social_ml.get("available") and social_ml["probability"] is not None and social_ml["probability"] >= 0.5:
+        detected_indicators.insert(0, {
+            "name": "Looks Like a Phishing Email",
+            "severity": "high" if social_ml["probability"] >= 0.7 else "medium",
+            "explanation": f"Our model has read over 121,000 real phishing and legitimate emails. It's {social_ml['probability']*100:.1f}% sure this one is a scam.",
+        })
+
+    # Add high-severity fraud indicator when the fraud model also confirms financial fraud
+    if fraud_prob is not None and fraud_prob >= 0.3:
+        detected_indicators.insert(0, {
+            "name": "High Risk: Financial Fraud Likely",
+            "severity": "high" if fraud_prob >= 0.6 else "medium",
+            "explanation": (
+                f"This message asks for ${extracted_amount:.2f} and matches patterns seen in real banking fraud. "
+                f"Our fraud model flagged it at {fraud_prob * 100:.1f}% confidence. Do not send any money."
+            ),
+        })
+
+    # Build sub_scores — include fraud_ml only when fraud model ran
+    sub_scores = {
+        "domain": domain_score,
+        "structural": structural_score,
+        "language": language_score,
+        "ml": ml_score if ml_score is not None else 0,
+    }
+    if fraud_prob is not None:
+        sub_scores["fraud_ml"] = round(fraud_prob * 100)
 
     return {
         "overall_score": overall_score,
         "label": label,
-        "sub_scores": {
-            "domain": domain_score,
-            "structural": structural_score,
-            "language": language_score,
-            "api_reputation": api_score,
-        },
+        "sub_scores": sub_scores,
         "indicators": detected_indicators,
         "education": education,
-        "api_status": api_status,
-        "ml_status": "disabled",
+        "ml_status": "active" if (social_ml.get("available") or (fraud_result and fraud_result.get("available"))) else "unavailable",
+        "ml_probability": social_ml.get("probability"),
+        "fraud_probability": fraud_prob,
+        "financial_content_detected": is_financial,
         "scan_type": "email",
-        "scanned_input": content[:200] + ("..." if len(content) > 200 else ""),
+        "scanned_input": content,
         "extracted_urls": extracted_urls[:5],
     }
