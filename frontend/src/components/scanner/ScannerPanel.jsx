@@ -12,36 +12,32 @@ import {
     MagnifyingGlass,
     CircleNotch,
     QrCode,
-    ListBullets,
+    ChatText,
     UploadSimple,
     X,
-    CreditCard,
 } from "@phosphor-icons/react";
 import RiskScorecard from "@/components/results/RiskScorecard";
 import EducationalModule from "@/components/results/EducationalModule";
 import IntelPanel from "@/components/results/IntelPanel";
-import { scanUrl, scanEmail, scanQr, scanBulk, scanTransaction } from "@/lib/api";
+import { scanUrl, scanEmail, scanQr, scanSocial } from "@/lib/api";
 import { scanStore } from "@/lib/sessionStore";
 import { AnimatedTabs, AnimatedButton } from "@/components/ui/AnimatedTabs";
 
 export default function ScannerPanel({ onScanComplete }) {
-    const [inputType, setInputType] = useState("url");
+    const [inputType, setInputType] = useState("social");
     const [urlValue, setUrlValue] = useState("");
     const [emailValue, setEmailValue] = useState("");
-    const [bulkValue, setBulkValue] = useState("");
-    const [transactionAmount, setTransactionAmount] = useState("");
+    const [socialValue, setSocialValue] = useState("");
     const [qrFile, setQrFile] = useState(null);
     const [qrPreview, setQrPreview] = useState(null);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
-    const [bulkResult, setBulkResult] = useState(null);
     const [error, setError] = useState(null);
     const fileInputRef = useRef(null);
 
     const handleScan = useCallback(async () => {
         setError(null);
         setResult(null);
-        setBulkResult(null);
         setLoading(true);
 
         try {
@@ -61,18 +57,9 @@ export default function ScannerPanel({ onScanComplete }) {
                 data = await scanQr(qrFile);
                 setResult(data);
                 scanStore.save(data);
-            } else if (inputType === "bulk") {
-                const urls = bulkValue.split("\n").map(u => u.trim()).filter(Boolean);
-                if (urls.length === 0) { setError("Please enter at least one URL."); setLoading(false); return; }
-                if (urls.length > 10) { setError("Maximum 10 URLs per bulk scan."); setLoading(false); return; }
-                data = await scanBulk(urls);
-                setBulkResult(data);
-                // Save each result individually
-                (data.results || []).forEach(r => { if (r.overall_score !== null) scanStore.save(r); });
-            } else if (inputType === "transaction") {
-                const amt = parseFloat(transactionAmount);
-                if (!transactionAmount.trim() || isNaN(amt) || amt <= 0) { setError("Please enter a valid transaction amount."); setLoading(false); return; }
-                data = await scanTransaction({ amount: amt });
+            } else if (inputType === "social") {
+                if (!socialValue.trim()) { setError("Please paste a social media post to scan."); setLoading(false); return; }
+                data = await scanSocial(socialValue.trim());
                 setResult(data);
                 scanStore.save(data);
             }
@@ -82,16 +69,14 @@ export default function ScannerPanel({ onScanComplete }) {
         } finally {
             setLoading(false);
         }
-    }, [inputType, urlValue, emailValue, qrFile, bulkValue, onScanComplete]);
+    }, [inputType, urlValue, emailValue, qrFile, socialValue, onScanComplete]);
 
     const handleReset = () => {
         setResult(null);
-        setBulkResult(null);
         setError(null);
         setUrlValue("");
         setEmailValue("");
-        setBulkValue("");
-        setTransactionAmount("");
+        setSocialValue("");
         setQrFile(null);
         setQrPreview(null);
     };
@@ -116,21 +101,19 @@ export default function ScannerPanel({ onScanComplete }) {
         inputType === "url" ? urlValue.trim().length > 0 :
             inputType === "email" ? emailValue.trim().length >= 10 :
                 inputType === "qr" ? qrFile !== null :
-                    inputType === "bulk" ? bulkValue.trim().length > 0 :
-                        inputType === "transaction" ? transactionAmount.trim().length > 0 :
-                            false;
+                    inputType === "social" ? socialValue.trim().length >= 10 :
+                        false;
 
     const scanLabel =
         inputType === "url" ? "URL" :
             inputType === "email" ? "Email" :
                 inputType === "qr" ? "QR Code" :
-                    inputType === "transaction" ? "Transaction" :
-                        "Bulk URLs";
+                    "Post";
 
     return (
         <div className="space-y-6">
             {/* Input Section */}
-            {!result && !bulkResult && (
+            {!result && (
                 <Card className="p-6 border border-border bg-card">
                     <Tabs value={inputType} onValueChange={setInputType}>
                         <div className="mb-6">
@@ -138,11 +121,10 @@ export default function ScannerPanel({ onScanComplete }) {
                                 value={inputType}
                                 onChange={setInputType}
                                 options={[
-                                    { value: "url", label: "URL", icon: Globe },
+                                    { value: "social", label: "Social", icon: ChatText },
                                     { value: "email", label: "Email", icon: EnvelopeSimple },
+                                    { value: "url", label: "URL", icon: Globe },
                                     { value: "qr", label: "QR Code", icon: QrCode },
-                                    { value: "bulk", label: "Bulk", icon: ListBullets },
-                                    { value: "transaction", label: "Transaction", icon: CreditCard },
                                 ]}
                                 layoutId="scanner-tabs"
                             />
@@ -221,57 +203,20 @@ export default function ScannerPanel({ onScanComplete }) {
                             </div>
                         </TabsContent>
 
-                        <TabsContent value="transaction" className="space-y-4">
-                            <div className="space-y-4">
-                                <div className="p-3 rounded-lg border border-border bg-muted/30">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <CreditCard size={14} className="text-muted-foreground" />
-                                        <p className="text-xs font-medium text-muted-foreground">Banking Fraud Detection</p>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground/70 leading-relaxed">
-                                        XGBoost model trained on 284,807 real credit card transactions · 98% ROC-AUC
-                                    </p>
-                                </div>
-                                <div>
-                                    <label htmlFor="transaction-amount" className="text-sm font-medium text-muted-foreground mb-1.5 block">
-                                        Transaction Amount
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">$</span>
-                                        <Input
-                                            id="transaction-amount"
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            placeholder="0.00"
-                                            value={transactionAmount}
-                                            onChange={(e) => setTransactionAmount(e.target.value)}
-                                            onKeyDown={(e) => e.key === "Enter" && inputReady && !loading && handleScan()}
-                                            disabled={loading}
-                                            className="pl-7 font-mono text-sm"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </TabsContent>
-
-                        <TabsContent value="bulk" className="space-y-4">
+                        <TabsContent value="social" className="space-y-4">
                             <div>
-                                <label htmlFor="bulk-input" className="text-sm font-medium text-muted-foreground mb-1.5 block">
-                                    Paste URLs (one per line, max 10)
+                                <label htmlFor="social-input" className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                                    Paste a social media post to analyze
                                 </label>
                                 <Textarea
-                                    id="bulk-input"
-                                    placeholder={"https://google.com\nhttps://suspicious-site.xyz\nhttps://github.com"}
-                                    value={bulkValue}
-                                    onChange={(e) => setBulkValue(e.target.value)}
+                                    id="social-input"
+                                    placeholder="Win a free iPhone! Click this link now: http://free-prize.xyz/claim"
+                                    value={socialValue}
+                                    onChange={(e) => setSocialValue(e.target.value)}
                                     disabled={loading}
                                     rows={6}
-                                    className="font-mono text-sm resize-none"
+                                    className="text-sm resize-none"
                                 />
-                                <p className="text-xs text-muted-foreground/60 mt-1">
-                                    {bulkValue.split("\n").filter(u => u.trim()).length}/10 URLs
-                                </p>
                             </div>
                         </TabsContent>
                     </Tabs>
@@ -345,88 +290,6 @@ export default function ScannerPanel({ onScanComplete }) {
                 </div>
             )}
 
-            {/* Bulk Scan Results */}
-            {bulkResult && !loading && (
-                <div className="space-y-4">
-                    {/* Summary card */}
-                    <Card className="p-5 border border-border bg-card">
-                        <h3 className="text-sm font-semibold mb-3">Bulk Scan Summary</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="text-center">
-                                <p className="text-2xl font-bold">{bulkResult.summary.scanned}</p>
-                                <p className="text-xs text-muted-foreground">Scanned</p>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-2xl font-bold">{bulkResult.summary.avg_score}</p>
-                                <p className="text-xs text-muted-foreground">Avg Score</p>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-2xl font-bold" style={{ color: "var(--status-dangerous)" }}>
-                                    {bulkResult.summary.highest_risk}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Highest Risk</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border/50">
-                            <div className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--status-safe)" }} />
-                                <span className="text-xs text-muted-foreground">{bulkResult.summary.distribution.safe} Safe</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--status-suspicious)" }} />
-                                <span className="text-xs text-muted-foreground">{bulkResult.summary.distribution.suspicious} Suspicious</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--status-dangerous)" }} />
-                                <span className="text-xs text-muted-foreground">{bulkResult.summary.distribution.dangerous} Dangerous</span>
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/* Individual results */}
-                    {bulkResult.results.map((r, i) => (
-                        <Card key={i} className="p-4 border border-border bg-card">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <Globe size={14} weight="regular" className="text-muted-foreground shrink-0" />
-                                    <span className="text-sm font-mono truncate">{r.scanned_input}</span>
-                                </div>
-                                {r.overall_score !== null ? (
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <span
-                                            className="w-2 h-2 rounded-full"
-                                            style={{
-                                                backgroundColor:
-                                                    r.label === "safe" ? "var(--status-safe)" :
-                                                        r.label === "suspicious" ? "var(--status-suspicious)" :
-                                                            "var(--status-dangerous)"
-                                            }}
-                                        />
-                                        <span className="text-sm font-medium">{r.overall_score}/100</span>
-                                        <span className="text-xs text-muted-foreground capitalize">{r.label}</span>
-                                    </div>
-                                ) : (
-                                    <span className="text-xs text-red-400">Error</span>
-                                )}
-                            </div>
-                        </Card>
-                    ))}
-
-                    <div className="h-20" /> {/* Spacer for floating button */}
-                    <div className="h-24" /> {/* Spacer for floating button */}
-                    <AnimatedButton
-                        onClick={handleReset}
-                        className="fixed bottom-8 left-1/2 z-40 gap-2 cursor-pointer
-                                   bg-card/50 backdrop-blur-md border border-border/50 shadow-lg
-                                   rounded-xl px-6 h-12
-                                   animate-slide-up-fade hover:text-foreground text-muted-foreground
-                                   flex items-center"
-                    >
-                        <MagnifyingGlass size={18} weight="regular" className="mr-2" />
-                        <span className="font-medium">Scan Again</span>
-                    </AnimatedButton>
-                </div>
-            )}
         </div>
     );
 }

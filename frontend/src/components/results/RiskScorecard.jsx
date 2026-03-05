@@ -15,8 +15,7 @@ import {
     Link,
     EnvelopeSimple,
     QrCode,
-    CreditCard,
-    ListBullets,
+    ChatText,
 } from "@phosphor-icons/react";
 
 const STATUS_CONFIG = {
@@ -49,6 +48,13 @@ function RiskGauge({ score, label }) {
         <div className="flex flex-col items-center gap-2">
             <div className="relative w-32 h-32">
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                    {/* Inner filled circle — r = ring_center(45) − strokeWidth(8) = 37,
+                        so the gap equals strokeWidth/2 on each side: a balanced margin */}
+                    <circle
+                        cx="50" cy="50" r="34"
+                        style={{ fill: config.bg }}
+                    />
+                    {/* Background track ring */}
                     <circle
                         cx="50" cy="50" r="45"
                         fill="none"
@@ -56,6 +62,7 @@ function RiskGauge({ score, label }) {
                         strokeWidth="8"
                         className="text-muted/50"
                     />
+                    {/* Progress arc */}
                     <circle
                         cx="50" cy="50" r="45"
                         fill="none"
@@ -91,16 +98,16 @@ function SubScoreBar({ name, score, maxScore = 100 }) {
     else if (score > 30) barColor = "var(--status-suspicious)";
 
     return (
-        <div className="space-y-1">
-            <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{name}</span>
-                <span className="font-medium">{score}</span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                    className="h-full rounded-full transition-all duration-700 ease-out"
-                    style={{ width: `${percentage}%`, backgroundColor: barColor }}
-                />
+        <div className="relative h-[28px] w-[75%] mx-auto bg-muted rounded-full overflow-hidden">
+            {/* Colored fill */}
+            <div
+                className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${percentage}%`, backgroundColor: barColor }}
+            />
+            {/* Text overlay — spans full width so both labels are always visible */}
+            <div className="absolute inset-0 flex items-center justify-between px-[14px]">
+                <span className="text-xs font-semibold text-white drop-shadow">{name}</span>
+                <span className="text-xs font-bold text-white drop-shadow">{score}</span>
             </div>
         </div>
     );
@@ -159,11 +166,10 @@ export default function RiskScorecard({ result }) {
 
     // Scan type display config
     const scanTypeConfig = {
-        url:         { label: "URL Scan",         icon: Link },
-        email:       { label: "Email Scan",        icon: EnvelopeSimple },
-        qr:          { label: "QR Code Scan",      icon: QrCode },
-        bulk:        { label: "Bulk Scan",          icon: ListBullets },
-        transaction: { label: "Transaction Scan",  icon: CreditCard },
+        url:    { label: "URL Scan",          icon: Link },
+        email:  { label: "Email Scan",         icon: EnvelopeSimple },
+        qr:     { label: "QR Code Scan",       icon: QrCode },
+        social: { label: "Social Media Post",  icon: ChatText },
     };
     const scanTypeInfo = scanTypeConfig[scan_type] || scanTypeConfig.url;
     const ScanIcon = scanTypeInfo.icon;

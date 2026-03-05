@@ -158,6 +158,34 @@ def analyze_url_heuristics(url):
             "explanation": "Parts of this URL are scrambled with encoding. That's usually done to disguise where a link actually leads."
         })
 
+    # 11. Scam keywords in domain name (crypto, investment, profit traps)
+    _SCAM_DOMAIN_KW_RE = re.compile(
+        r'\b(?:crypto|bitcoin|btc|ethereum|eth|profit|earn|invest|trading|returns|'
+        r'income|forex|wallet|airdrop|giveaway|doubl[ei]|bonus|reward|lucky|prize|'
+        r'winner|claim|free-?money|get-?rich|wealth|fund|loan|relief|stimulus)\b',
+        re.IGNORECASE,
+    )
+    domain_kw_matches = _SCAM_DOMAIN_KW_RE.findall(hostname)
+    if domain_kw_matches:
+        severity = min(1.0, 0.55 + (len(domain_kw_matches) - 1) * 0.15)
+        indicators.append({
+            "name": "Scam Keywords in Domain",
+            "detected": True,
+            "severity": severity,
+            "explanation": f"The domain name contains words like '{', '.join(set(m.lower() for m in domain_kw_matches))}' — terms scammers use to attract victims searching for quick money or investments."
+        })
+
+    # 12. Multiple hyphens in domain (e.g. smart-crypto-profit.ai)
+    base_domain = hostname.split(".")[-2] if hostname.count(".") >= 1 else hostname
+    hyphen_count = base_domain.count("-")
+    if hyphen_count >= 2:
+        indicators.append({
+            "name": "Multiple Hyphens in Domain",
+            "detected": True,
+            "severity": min(1.0, 0.40 + (hyphen_count - 2) * 0.15),
+            "explanation": f"The domain uses {hyphen_count} hyphens (e.g. 'smart-crypto-profit'). Legitimate sites rarely need hyphens — scammers use them to string together convincing-sounding words."
+        })
+
     return indicators
 
 
@@ -236,3 +264,126 @@ def analyze_email_heuristics(content):
         })
 
     return indicators, urls_in_email
+
+
+# ---------------------------------------------------------------------------
+# Social-media specific keywords / patterns
+# ---------------------------------------------------------------------------
+_SOCIAL_GIVEAWAY_RE = re.compile(
+    r'\b(?:giveaway|give\s*away|free\s+(?:iphone|gift|prize|money|cash|crypto|bitcoin|nft)|'
+    r'you(?:\'ve)?\s+(?:won|been\s+selected|been\s+chosen)|winner|congratulations.*(?:prize|gift|won)|'
+    r'claim\s+(?:your\s+)?(?:prize|reward|gift|free)|limited\s+(?:offer|time)|exclusive\s+offer)\b',
+    re.IGNORECASE,
+)
+_SOCIAL_IMPERSONATION_RE = re.compile(
+    r'\b(?:elon\s*musk|official\s+(?:account|page|support|team)|verified\s+(?:account|page)|'
+    r'customer\s+support|help\s+desk|admin\s+team|direct\s+message\s+(?:us|me)|dm\s+(?:us|me)\s+(?:now|for)|'
+    r'follow\s+back|follow\s+for\s+follow|team\s+(?:support|official))\b',
+    re.IGNORECASE,
+)
+_SOCIAL_CRYPTO_SCAM_RE = re.compile(
+    r'\b(?:double\s+(?:your\s+)?(?:bitcoin|crypto|btc|eth|money)|send\s+(?:\d+\s+)?(?:btc|eth|bitcoin|ethereum|crypto)|'
+    r'invest(?:ment)?\s+(?:opportunity|platform|returns?)|guaranteed\s+(?:profit|returns?|income)|'
+    r'passive\s+income|trading\s+(?:bot|signal|profit)|x\d+\s+(?:returns?|profit)|'
+    r'\d+%\s+(?:daily|weekly|monthly)\s+(?:returns?|profit|interest))\b',
+    re.IGNORECASE,
+)
+_SOCIAL_URGENCY_RE = re.compile(
+    r'\b(?:act\s+now|hurry|last\s+chance|expires?\s+(?:soon|today|in\s+\d+)|'
+    r'only\s+\d+\s+(?:spots?|slots?|left)|respond\s+(?:now|immediately|asap)|'
+    r'before\s+it\'s\s+too\s+late|don\'t\s+miss\s+(?:out|this)|time\s+(?:is\s+running\s+out|sensitive))\b',
+    re.IGNORECASE,
+)
+_SOCIAL_LINK_BAIT_RE = re.compile(
+    r'\b(?:click\s+(?:the\s+)?link\s+(?:in\s+(?:bio|description|profile)|below|above|here)|'
+    r'link\s+in\s+(?:bio|description|profile|comments?)|swipe\s+up|tap\s+(?:the\s+)?link|'
+    r'visit\s+(?:our\s+)?(?:website|site|page)\s+(?:now|below|above))\b',
+    re.IGNORECASE,
+)
+
+
+def analyze_social_heuristics(content: str):
+    """
+    Run social-media-specific heuristic checks on post text.
+    Returns a list of indicator dicts and extracted URLs.
+    """
+    indicators = []
+    content_lower = content.lower()
+
+    # 1. Fake giveaway / prize bait
+    if _SOCIAL_GIVEAWAY_RE.search(content):
+        indicators.append({
+            "name": "Fake Giveaway or Prize",
+            "detected": True,
+            "severity": 0.8,
+            "explanation": "This post claims you've won something or offers a free prize. Scammers use fake giveaways to get your personal info or send you to a malicious link.",
+        })
+
+    # 2. Celebrity / account impersonation
+    if _SOCIAL_IMPERSONATION_RE.search(content):
+        indicators.append({
+            "name": "Account Impersonation",
+            "detected": True,
+            "severity": 0.85,
+            "explanation": "This post uses language common in fake celebrity or official support accounts. Real companies and public figures don't cold-message you about prizes or help.",
+        })
+
+    # 3. Crypto doubling / investment scam
+    if _SOCIAL_CRYPTO_SCAM_RE.search(content):
+        indicators.append({
+            "name": "Crypto Investment Scam",
+            "detected": True,
+            "severity": 0.95,
+            "explanation": "This post promises to double your crypto or offers guaranteed investment returns. That's always a scam — no legitimate platform guarantees profits.",
+        })
+
+    # 4. Urgency pressure tactics
+    if _SOCIAL_URGENCY_RE.search(content):
+        indicators.append({
+            "name": "Urgency Pressure Tactic",
+            "detected": True,
+            "severity": 0.65,
+            "explanation": "This post is pressuring you to act fast. Scammers create fake urgency so you don't stop to think before clicking.",
+        })
+
+    # 5. Link-in-bio / redirect bait
+    if _SOCIAL_LINK_BAIT_RE.search(content):
+        indicators.append({
+            "name": "Link Redirect Bait",
+            "detected": True,
+            "severity": 0.6,
+            "explanation": "This post is pushing you to click a link elsewhere (bio, profile, or description). Scammers hide their links there to avoid platform filters.",
+        })
+
+    # 6. Requests for DMs / off-platform contact
+    if re.search(r'\b(?:dm\s+(?:me|us)|message\s+(?:me|us)\s+(?:now|directly|privately)|contact\s+(?:me|us)\s+(?:on|via|at)\s+\w+)\b', content_lower):
+        indicators.append({
+            "name": "Off-Platform Contact Request",
+            "detected": True,
+            "severity": 0.7,
+            "explanation": "This post asks you to message privately or move the conversation off-platform. Scammers do this to avoid detection by platform safety systems.",
+        })
+
+    # 7. Sensitive info request
+    sensitive_kw = ["seed phrase", "private key", "wallet password", "recovery phrase",
+                    "social security", "bank account", "credit card", "password", "pin"]
+    found_sensitive = [kw for kw in sensitive_kw if kw in content_lower]
+    if found_sensitive:
+        indicators.append({
+            "name": "Asks for Sensitive Info",
+            "detected": True,
+            "severity": 0.9,
+            "explanation": f"This post asks for your {found_sensitive[0]}. Nobody legitimate ever needs that.",
+        })
+
+    # 8. Extract URLs
+    urls_in_post = re.findall(r'https?://[^\s<>"\']+', content)
+    if len(urls_in_post) > 2:
+        indicators.append({
+            "name": "Multiple Links in Post",
+            "detected": True,
+            "severity": 0.5,
+            "explanation": f"There are {len(urls_in_post)} links in this post. Scam posts flood links to maximize clicks.",
+        })
+
+    return indicators, urls_in_post

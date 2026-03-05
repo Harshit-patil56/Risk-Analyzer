@@ -9,6 +9,23 @@ WEIGHTS_ML = {
     "language": 0.06,
 }
 
+# Weights when both ML and API reputation are available
+WEIGHTS_ML_API = {
+    "ml": 0.45,
+    "api": 0.25,
+    "domain": 0.18,
+    "structural": 0.10,
+    "language": 0.02,
+}
+
+# Weights when API reputation is available but no ML
+WEIGHTS_API_ONLY = {
+    "api": 0.50,
+    "domain": 0.30,
+    "structural": 0.15,
+    "language": 0.05,
+}
+
 # Fallback weights when ML is unavailable (heuristics only)
 WEIGHTS_NO_ML = {
     "domain": 0.44,
@@ -39,6 +56,8 @@ def compute_domain_score(url_indicators):
         "Brand Impersonation",
         "Excessive Subdomains",
         "URL Shortener Detected",
+        "Scam Keywords in Domain",
+        "Multiple Hyphens in Domain",
     }
 
     relevant = [ind for ind in url_indicators if ind["name"] in domain_indicator_names and ind["detected"]]
@@ -95,13 +114,29 @@ def compute_language_score(email_indicators):
     return min(100, max(0, round(score)))
 
 
-def compute_overall_score(domain_score, structural_score, language_score, ml_score=None):
+def compute_overall_score(domain_score, structural_score, language_score, ml_score=None, api_score=None):
     """
     Compute weighted overall risk score (0-100) and label.
-    ML is the primary signal (60%) when available; heuristics fill the remainder.
-    Without ML, falls back to pure heuristic weighting.
+    ML is the primary signal (60%) when available.
+    API reputation adds weight when external threat intel is available.
+    Falls back to pure heuristic weighting when neither is present.
     """
-    if ml_score is not None:
+    if ml_score is not None and api_score is not None:
+        overall = (
+            ml_score * WEIGHTS_ML_API["ml"]
+            + api_score * WEIGHTS_ML_API["api"]
+            + domain_score * WEIGHTS_ML_API["domain"]
+            + structural_score * WEIGHTS_ML_API["structural"]
+            + language_score * WEIGHTS_ML_API["language"]
+        )
+    elif api_score is not None:
+        overall = (
+            api_score * WEIGHTS_API_ONLY["api"]
+            + domain_score * WEIGHTS_API_ONLY["domain"]
+            + structural_score * WEIGHTS_API_ONLY["structural"]
+            + language_score * WEIGHTS_API_ONLY["language"]
+        )
+    elif ml_score is not None:
         overall = (
             ml_score * WEIGHTS_ML["ml"]
             + domain_score * WEIGHTS_ML["domain"]
@@ -116,6 +151,15 @@ def compute_overall_score(domain_score, structural_score, language_score, ml_sco
         )
 
     overall = min(100, max(0, round(overall)))
+
+    # Domain safety net: if domain signals are strongly suspicious (≥50),
+    # don't let an uncertain ML score classify the URL as "safe".
+    # This prevents a poorly-calibrated ML prediction from overriding clear
+    # domain-level evidence (e.g. "crypto-profit" keywords + hyphens).
+    if domain_score >= 50:
+        floor = SAFE_THRESHOLD + 5  # 35 by default → just inside "suspicious"
+        overall = max(overall, floor)
+
     return overall, _classify_label(overall)
 
 
