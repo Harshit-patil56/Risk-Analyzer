@@ -1,7 +1,24 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+function getApiBase() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://127.0.0.1:8000";
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://127.0.0.1:8000";
+    }
+  }
+
+  throw new Error("NEXT_PUBLIC_API_URL is not configured.");
+}
 
 export async function scanUrl(url) {
-  const response = await fetch(`${API_BASE}/scan/url`, {
+  const response = await fetch(`${getApiBase()}/scan/url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -16,7 +33,7 @@ export async function scanUrl(url) {
 }
 
 export async function scanEmail(content) {
-  const response = await fetch(`${API_BASE}/scan/email`, {
+  const response = await fetch(`${getApiBase()}/scan/email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
@@ -31,7 +48,7 @@ export async function scanEmail(content) {
 }
 
 export async function scanSocial(content) {
-  const response = await fetch(`${API_BASE}/scan/social`, {
+  const response = await fetch(`${getApiBase()}/scan/social`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
@@ -49,7 +66,7 @@ export async function scanQr(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/scan/qr`, {
+  const response = await fetch(`${getApiBase()}/scan/qr`, {
     method: "POST",
     body: formData,
   });
@@ -63,7 +80,7 @@ export async function scanQr(file) {
 }
 
 export async function scanBulk(urls) {
-  const response = await fetch(`${API_BASE}/scan/bulk`, {
+  const response = await fetch(`${getApiBase()}/scan/bulk`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ urls }),
@@ -78,7 +95,7 @@ export async function scanBulk(urls) {
 }
 
 export async function scanTransaction(data) {
-  const response = await fetch(`${API_BASE}/scan/transaction`, {
+  const response = await fetch(`${getApiBase()}/scan/transaction`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

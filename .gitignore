@@ -15,3 +15,9 @@ node_modules/
 .next/
 dist/
 .DS_Store
+
+# Archives
+*.zip
+*.ZIP
+
+

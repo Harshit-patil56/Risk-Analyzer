@@ -12,17 +12,34 @@ router = APIRouter()
 
 
 def decode_qr(image_bytes):
-    """Decode QR code from image bytes using pyzbar."""
+    """Decode QR code from image bytes using pyzbar with OpenCV fallback."""
     try:
         from pyzbar.pyzbar import decode as pyzbar_decode
         img = Image.open(io.BytesIO(image_bytes))
         results = pyzbar_decode(img)
         if not results:
-            return None
+            raise ValueError("No QR code detected with pyzbar")
         # Return the first QR code data as string
         return results[0].data.decode("utf-8")
-    except Exception as e:
-        raise ValueError(f"QR decode failed: {str(e)}")
+    except Exception as pyzbar_error:
+        try:
+            import cv2
+            import numpy as np
+
+            np_bytes = np.frombuffer(image_bytes, dtype=np.uint8)
+            image = cv2.imdecode(np_bytes, cv2.IMREAD_COLOR)
+            if image is None:
+                raise ValueError("Unable to decode image bytes")
+
+            detector = cv2.QRCodeDetector()
+            data, _points, _ = detector.detectAndDecode(image)
+            if data:
+                return data
+            return None
+        except Exception as opencv_error:
+            raise ValueError(
+                f"QR decode failed (pyzbar: {str(pyzbar_error)}; opencv: {str(opencv_error)})"
+            )
 
 
 def follow_redirects(url):

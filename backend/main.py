@@ -26,3 +26,13 @@ app.include_router(transaction.router, prefix="/scan", tags=["transaction"])
 @app.get("/")
 def health_check():
     return {"status": "ok", "service": "risk-analyzer-api"}
+
+
+@app.get("/healthz")
+def health_check_detailed():
+    return {"status": "ok", "service": "risk-analyzer-api"}
+
+
+@app.head("/healthz")
+def health_check_head():
+    return
