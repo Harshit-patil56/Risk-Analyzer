@@ -1,143 +1,54 @@
-# Risk Analyzer
+Risk Analyzer
+Risk Analyzer is a security intelligence tool designed to detect phishing, scams, and fraudulent activity across multiple digital channels. It combines machine learning models with rule-based heuristics and external threat intelligence to provide explainable risk scores for URLs, emails, social media content, and QR codes.
 
-A cybersecurity tool that scans URLs, emails, QR codes, and social media posts for phishing threats, scam patterns, and fraud indicators. It combines rule-based heuristics, trained ML models, and optional external threat intelligence APIs to produce an explainable risk score.
+Core Features
+URL Analysis: Checks domain reputation, TLD safety, and brand impersonation patterns.
 
----
+Content Scanning: Detects urgency, threatening language, and scam indicators in emails and social media posts.
 
-## What it does
+QR Code Decoding: Extracts URLs from QR images and subjects them to the full security pipeline.
 
-- **URL scanning** — checks domain structure, TLD reputation, brand impersonation, scam keywords, and queries Google Safe Browsing, VirusTotal, PhishTank, and URLhaus when API keys are present.
-- **Email scanning** — detects urgency language, sensitive info requests, threatening tone, embedded URLs, and auto-triggers a fraud model when financial language is found.
-- **Social media post scanning** — checks for fake giveaways, crypto investment scams, impersonation, off-platform contact requests, and urgency pressure.
-- **QR code scanning** — decodes a QR code image and runs the extracted URL through the full URL scan pipeline.
+Explainable Scoring: Provides a 0-100 risk rating with specific reasons for each flag.
 
-Each scan returns a 0–100 risk score, a label (Safe / Suspicious / Dangerous), detected indicators with plain-language explanations, and a score breakdown by category.
+External Intelligence: Optional integration with Google Safe Browsing and VirusTotal for verified threat data.
 
----
+Project Structure
+backend/: FastAPI server handling ML inference and scoring logic.
 
-## ML Models
+frontend/: Next.js dashboard for interactive scanning and reporting.
 
-Three models are pre-trained and stored in `backend/models/`:
+extension/: Manifest v3 browser extension for real-time protection.
 
-| Model file | Algorithm | Trained on | Purpose |
-|---|---|---|---|
-| `phishing_model.joblib` | Gradient Boosting | Kaggle phishing URL dataset | URL phishing probability |
-| `social_model.joblib` + `social_vectorizer.joblib` | TF-IDF + Logistic Regression | phishing_email.csv + CEAS_08.csv (~121k emails) | Email / social text phishing |
-| `transaction_fraud_model.joblib` + `fraud_scaler.joblib` | XGBoost | creditcard.csv (284,807 transactions) | Financial fraud detection |
+Setup Guide
+1. Backend Setup
+Navigate to the backend directory, set up a virtual environment, and install dependencies.
 
-The models are already trained and included. Re-training is optional — scripts are in `backend/training/`.
-
----
-
-## Project structure
-
-```
-backend/          FastAPI server, ML inference, heuristics, scoring
-  engine/         Core logic: heuristics, ML models, scorer, intel, API checker
-  models/         Pre-trained .joblib model files
-  routers/        API route handlers (scan, qr, bulk, transaction)
-  training/       Training scripts and datasets
-frontend/         Next.js 19 web UI
-  src/app/        Page layout and global styles
-  src/components/ Scanner panel, results scorecard, indicator cards
-extension/        Chrome/Edge browser extension (Manifest v3)
-```
-
----
-
-## Requirements
-
-- Python 3.10+
-- Node.js 18+
-- (Optional) Google Safe Browsing API key and VirusTotal API key for external threat intel
-
----
-
-## Setup
-
-### 1. Backend
-
-```bash
 cd backend
 python -m venv .venv
 
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
-
+Activate venv: source .venv/bin/activate (Unix) or .venv\Scripts\activate (Windows)
 pip install -r requirements.txt
-```
+python main.py
 
-Create a `.env` file in `backend/` for optional API keys:
+2. Frontend Setup
+Navigate to the frontend directory and start the development server.
 
-```env
-GOOGLE_SAFE_BROWSING_API_KEY=your_key_here
-VIRUSTOTAL_API_KEY=your_key_here
-```
-
-If these are not set, the system still works fully using local models and heuristics. PhishTank and URLhaus are always queried (no key needed).
-
-Start the server:
-
-```bash
-python -m uvicorn main:app --port 8000
-```
-
-API docs available at `http://localhost:8000/docs`.
-
-### 2. Frontend
-
-```bash
 cd frontend
 npm install
 npm run dev
-```
 
-Open `http://localhost:3000`.
+Technical Specifications
+The system utilizes three specialized machine learning models located in the backend/models/ directory:
 
-### 3. Browser Extension (optional)
+Phishing Model (Gradient Boosting): Analyzes URL structures and metadata.
 
-1. Open Chrome or Edge and go to `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked** and select the `extension/` folder
+Social/Email Model (Logistic Regression): Processes text content via TF-IDF vectorization to identify phishing language.
 
-The extension scans the URL of the current tab by sending it to the backend at `http://localhost:8000`.
+Transaction Model (XGBoost): Identifies patterns indicative of financial fraud.
 
----
+Requirements
+Python 3.10+
 
-## API endpoints
+Node.js 18+
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/scan/url` | Scan a URL |
-| POST | `/scan/email` | Scan email text content |
-| POST | `/scan/social` | Scan a social media post |
-| POST | `/scan/qr` | Scan a QR code image file |
-| GET | `/` | Health check |
-
----
-
-## Scoring
-
-Scores are 0–100. Thresholds:
-
-- **0–30** → Safe
-- **31–60** → Suspicious
-- **61–100** → Dangerous
-
-When the ML model is available, it contributes 60% of the score. External API results (when keys are configured) shift the weighting further. If only heuristics are available, domain, structural, and language signals fill the full weight.
-
----
-
-## Re-training models (optional)
-
-Training scripts expect datasets placed in `backend/training/dataset/`. See the comment at the top of each script for the required filename and source.
-
-```bash
-cd backend
-python training/train_model.py          # URL phishing model
-python training/train_social_model.py   # Email / social model
-python training/train_fraud_model.py    # Transaction fraud model
-```
+(Optional) API Keys for Google Safe Browsing and VirusTotal.
