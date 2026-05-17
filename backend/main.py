@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import CORS_ORIGINS
 from routers import scan, qr, bulk, transaction
-
+# Initialize the FastAPI application with metadata
 app = FastAPI(
     title="Risk Analyzer API",
     description="Phishing Detection & Risk Scoring System",
@@ -13,7 +13,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"], # Allows all HTTP methods (GET, POST, PUT, DELETE, Head)
     allow_headers=["*"],
 )
 
